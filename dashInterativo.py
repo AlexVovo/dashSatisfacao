@@ -12,6 +12,26 @@ try:
     df = pd.read_excel(file_path)
     st.success(f"Arquivo carregado com sucesso: {file_path}")
 
+    # Converter a coluna de data se necessário
+    if "Data de preenchimento" in df.columns:
+        df["Data de preenchimento"] = pd.to_datetime(df["Data de preenchimento"], errors="coerce")
+
+        # Filtro por data
+        st.subheader("📅 Filtrar por Data de Preenchimento")
+        min_date = df["Data de preenchimento"].min()
+        max_date = df["Data de preenchimento"].max()
+
+        start_date, end_date = st.date_input(
+            "Selecione o intervalo de datas:",
+            [min_date, max_date],
+            min_value=min_date,
+            max_value=max_date
+        )
+
+        # Aplicar o filtro ao DataFrame
+        mask = (df["Data de preenchimento"] >= pd.to_datetime(start_date)) & (df["Data de preenchimento"] <= pd.to_datetime(end_date))
+        df = df.loc[mask]
+
     # Exibir os primeiros registros
     st.subheader("📄 Visualização dos Dados")
     st.write(df.head())
