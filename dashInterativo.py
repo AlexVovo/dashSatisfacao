@@ -7,7 +7,6 @@ from io import BytesIO
 from datetime import datetime, timedelta
 import re
 from fpdf import FPDF
-import base64
 import matplotlib.pyplot as plt
 import tempfile
 import os
@@ -58,17 +57,17 @@ class PDF(FPDF):
 
     def chapter_title(self, title):
         self.set_font("Arial", "B", 12)
-        self.cell(0, 10, title, ln=True, align="L")
-        self.ln(5)
+        self.multi_cell(0, 10, title)
+        self.ln(2)
 
     def chapter_body(self, body):
         self.set_font("Arial", "", 10)
         self.multi_cell(0, 10, body)
         self.ln()
 
-    def add_image(self, image_path):
+    def insert_image(self, image_path):
         self.image(image_path, w=180)
-        self.ln(10)
+        self.ln(8)
 
 def salvar_grafico(df_counts, titulo):
     fig, ax = plt.subplots()
@@ -84,7 +83,6 @@ def salvar_grafico(df_counts, titulo):
     plt.close(fig)
     return temp_file.name
 
-# Nome das áreas
 nomes_areas = {
     0: "Serviço Social", 1: "Nutrição", 2: "Psicopedagogia", 3: "Psicologia", 4: "Odontologia",
     5: "Fonoaudiologia", 6: "Fisioterapia", 7: "Psiquiatria", 8: "Farmácia", 9: "Enfermagem",
@@ -133,7 +131,6 @@ try:
 
         df = df[(df["Ano"] == ano_selecionado) & (df["Mês"] == mes_selecionado)]
 
-    # Seleciona colunas de índice 2 a 23
     colunas_graficos = df.columns[2:24].tolist()
 
     opcoes = ["Todas as Perguntas"] + colunas_graficos
@@ -157,9 +154,9 @@ try:
         st.write(df_counts)
         exportar_excel(df_counts)
 
+        pdf.chapter_title(categoria_escolhida)
         grafico_path = salvar_grafico(df_counts, f"Respostas de {categoria_escolhida}")
-        pdf.chapter_title(f"{categoria_escolhida}")
-        pdf.add_image(grafico_path)
+        pdf.insert_image(grafico_path)
         os.unlink(grafico_path)
 
     else:
@@ -187,30 +184,36 @@ try:
             fig.update_traces(textposition='outside')
             st.plotly_chart(fig)
 
+            pdf.chapter_title(nomes_areas.get(idx, col))
             grafico_path = salvar_grafico(df_counts, f"Respostas de {col}")
-            pdf.chapter_title(f"{nomes_areas.get(idx, col)}")
-            pdf.add_image(grafico_path)
+            pdf.insert_image(grafico_path)
             os.unlink(grafico_path)
 
         df_areas = pd.DataFrame(dados_areas)
         st.dataframe(df_areas)
         exportar_excel(df_areas, nome_arquivo="areas_atendidas.xlsx")
+
         pdf.chapter_title("Resumo de Áreas Atendidas")
         for index, row in df_areas.iterrows():
-            pdf.chapter_body(f"Área: {row['Área']}, Qt Respostas: {row['Qt Respostas']}, Excelente: {row['Excelente']}, % Excelente: {row['% Excelente']}%")
+            resumo = f"Área: {row['Área']}, Qt Respostas: {row['Qt Respostas']}, Excelente: {row['Excelente']}, % Excelente: {row['% Excelente']}%"
+            pdf.chapter_body(resumo)
 
-    # Sugestões
     if "Deixe sua Sugestão:" in df.columns:
         sugestoes = df["Deixe sua Sugestão:"].dropna().reset_index(drop=True)
         if not sugestoes.empty:
             st.subheader("💬 Sugestões")
             st.dataframe(sugestoes.to_frame(name="Sugestões"))
 
-    buffer = BytesIO()
-    pdf.output(buffer)
-    b64 = base64.b64encode(buffer.getvalue()).decode()
-    href = f'<a href="data:application/octet-stream;base64,{b64}" download="relatorio_satisfacao.pdf">\U0001F4C4 Baixar PDF</a>'
-    st.markdown(href, unsafe_allow_html=True)
+    # Salvar PDF como bytes e oferecer botão de download
+    pdf_bytes = pdf.output(dest='S').encode('latin1')
+    buffer = BytesIO(pdf_bytes)
+
+    st.download_button(
+        label="\U0001F4C4 Baixar PDF",
+        data=buffer,
+        file_name="relatorio_satisfacao.pdf",
+        mime="application/pdf"
+    )
 
 except Exception as e:
     st.error(f"Erro ao processar: {e}")
