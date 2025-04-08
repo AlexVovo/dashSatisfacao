@@ -2,27 +2,104 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from io import BytesIO
-from fpdf import FPDF
-import plotly.io as pio
-import os
+from datetime import datetime, timedelta
 import re
+from fpdf import FPDF
+import base64
+import matplotlib.pyplot as plt
+import tempfile
+import os
 
-# Função para limpar nomes de arquivos
+# Função para limpar nome de arquivo
 def limpar_nome_arquivo(nome):
     return re.sub(r'[^\w\s-]', '_', nome).strip().replace(' ', '_')
 
-file_path = "FormPacientes.xlsx"
+# Função para exportar Excel
+def exportar_excel(df, nome_arquivo="resumo_areas.xlsx"):
+    buffer = BytesIO()
+    df.to_excel(buffer, index=False)
+    st.download_button(
+        label="\U0001F4C5 Baixar Excel",
+        data=buffer.getvalue(),
+        file_name=nome_arquivo,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
-st.title("📊 Feedback dos Pacientes")
+# Função para aplicar cores aos gráficos
+def get_color(resposta):
+    cores = {
+        "Excelente": "green",
+        "Bom": "blue",
+        "Regular": "orange",
+        "Ruim": "red",
+        "Não se Aplica": "gray"
+    }
+    return cores.get(resposta, "black")
+
+# Função para gerar PDF
+class PDF(FPDF):
+    def header(self):
+        self.set_font("Arial", "B", 12)
+        self.cell(0, 10, "Relatório de Satisfação dos Pacientes", ln=True, align="C")
+        self.ln(10)
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font("Arial", "I", 8)
+        self.cell(0, 10, f"Página {self.page_no()}", align="C")
+
+    def chapter_title(self, title):
+        self.set_font("Arial", "B", 12)
+        self.cell(0, 10, title, ln=True, align="L")
+        self.ln(5)
+
+    def chapter_body(self, body):
+        self.set_font("Arial", "", 10)
+        self.multi_cell(0, 10, body)
+        self.ln()
+
+    def add_image(self, image_path):
+        self.image(image_path, w=180)
+        self.ln(10)
+
+# Função para salvar gráfico temporariamente
+
+def salvar_grafico(df_counts, titulo):
+    fig, ax = plt.subplots()
+    colors = [get_color(resp) for resp in df_counts['Resposta']]
+    ax.bar(df_counts['Resposta'], df_counts['Quantidade'], color=colors)
+    ax.set_title(titulo)
+    ax.set_ylabel("Quantidade")
+    ax.set_xlabel("Resposta")
+    for i, (qtd, perc) in enumerate(zip(df_counts['Quantidade'], df_counts['Percentual (%)'])):
+        ax.text(i, qtd, f"{perc}%", ha='center', va='bottom')
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+    plt.savefig(temp_file.name, bbox_inches='tight')
+    plt.close(fig)
+    return temp_file.name
+
+# Dicionário de nomes de áreas
+nomes_areas = {
+    0: "Serviço Social", 1: "Nutrição", 2: "Psicopedagogia", 3: "Psicologia", 4: "Odontologia",
+    5: "Fonoaudiologia", 6: "Fisioterapia", 7: "Psiquiatria", 8: "Farmácia", 9: "Enfermagem",
+    10: "Educativas/Educação em grupo", 11: "Assistência Familiar", 12: "Copa", 13: "Recepção",
+    14: "Ações Culturais e Festividades", 15: "Recreação", 16: "Atividades Interativas",
+    17: "Oficinas Arte/Vida", 18: "Apoio Jurídico", 19: "Limpeza do Local",
+    20: "ICI x Famílias", 21: "Terapia Ocupacioal"
+}
+
+st.set_page_config(page_title="Satisfação Pacientes", layout="wide")
+st.title("\U0001F4CA Feedback dos Pacientes")
+
+file_path = "FormPacientes.xlsx"
 
 try:
     df = pd.read_excel(file_path)
-    st.success(f"Arquivo carregado com sucesso: {file_path}")
+    st.success("Arquivo carregado com sucesso!")
 
     if "Data de preenchimento" in df.columns:
         df["Data de preenchimento"] = pd.to_datetime(df["Data de preenchimento"], errors="coerce")
         df = df.dropna(subset=["Data de preenchimento"])
-
         df["Ano"] = df["Data de preenchimento"].dt.year.astype(int)
         df["Mês"] = df["Data de preenchimento"].dt.strftime("%B")
 
@@ -34,110 +111,101 @@ try:
         }
         df["Mês"] = df["Mês"].map(meses_traducao)
 
-        st.subheader("📅 Filtrar por Mês e Ano")
+        hoje = datetime.today()
+        mes_anterior = hoje - timedelta(days=30)
+        mes_default = meses_traducao[mes_anterior.strftime("%B")]
+        ano_default = mes_anterior.year
+
+        st.subheader("\U0001F4C5 Filtrar por Mês e Ano")
         ordem_meses = list(meses_traducao.values())
         anos_disponiveis = sorted(df["Ano"].unique())
         meses_disponiveis = [m for m in ordem_meses if m in df["Mês"].unique()]
 
-        ano_selecionado = st.selectbox("Selecione o Ano", anos_disponiveis)
-        mes_selecionado = st.selectbox("Selecione o Mês", meses_disponiveis)
+        ano_selecionado = st.selectbox("Ano", anos_disponiveis, index=anos_disponiveis.index(ano_default))
+        mes_selecionado = st.selectbox("Mês", meses_disponiveis, index=meses_disponiveis.index(mes_default) if mes_default in meses_disponiveis else 0)
 
         df = df[(df["Ano"] == ano_selecionado) & (df["Mês"] == mes_selecionado)]
 
-    # Obter colunas categóricas
-    categorical_columns = df.select_dtypes(include=['object']).columns
-    categorical_columns = [col for col in categorical_columns if col != "Data de preenchimento"]
+    colunas_validas = df.select_dtypes(include=['object']).columns
+    colunas_exibir = [
+        col for col in colunas_validas
+        if col.strip().lower() not in ["data de preenchimento", "deixe sua sugestão"]
+    ]
 
-    # Dropdown de perguntas
-    opcoes = ["Todas as Perguntas"] + categorical_columns
-    categoria_escolhida = st.selectbox("Selecione uma pergunta do formulário", opcoes)
+    opcoes = ["Todas as Perguntas"] + colunas_exibir
+    categoria_escolhida = st.selectbox("Selecione uma pergunta", opcoes)
 
-    graficos_salvos = []
-
-    def exportar_excel(df_export, nome_arquivo="respostas.xlsx"):
-        output = BytesIO()
-        df_export.to_excel(output, index=False)
-        st.download_button(
-            label="⬇️ Baixar Excel",
-            data=output.getvalue(),
-            file_name=nome_arquivo,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-
-    def exportar_pdf_com_graficos(lista_caminhos, nome_pdf="respostas.pdf"):
-        pdf = FPDF()
-        pdf.set_auto_page_break(auto=True, margin=15)
-
-        for caminho in lista_caminhos:
-            pdf.add_page()
-            titulo = os.path.basename(caminho).replace("_", " ").replace(".png", "")
-            pdf.set_font("Arial", size=12)
-            pdf.cell(200, 10, txt=titulo, ln=True)
-            pdf.image(caminho, x=10, y=30, w=180)
-
-        pdf_bytes = pdf.output(dest='S').encode('latin1')
-        st.download_button(
-            "📄 Baixar PDF com Gráficos",
-            data=pdf_bytes,
-            file_name=nome_pdf,
-            mime="application/pdf"
-        )
+    pdf = PDF()
+    pdf.add_page()
 
     if categoria_escolhida != "Todas as Perguntas":
         df_counts = df[categoria_escolhida].value_counts().reset_index()
         df_counts.columns = ['Resposta', 'Quantidade']
         df_counts['Percentual (%)'] = (df_counts['Quantidade'] / df_counts['Quantidade'].sum() * 100).round(2)
 
-        fig_cat = px.bar(
-            df_counts, x="Resposta", y="Quantidade", text="Percentual (%)",
-            title=f"Respostas de {categoria_escolhida}"
-        )
-        fig_cat.update_traces(textposition='outside')
-        st.plotly_chart(fig_cat)
+        fig = px.bar(df_counts, x="Resposta", y="Quantidade", text="Percentual (%)",
+                     title=f"Respostas de {categoria_escolhida}", color="Resposta",
+                     color_discrete_map={r: get_color(r) for r in df_counts['Resposta']})
+        fig.update_traces(textposition='outside')
+        st.plotly_chart(fig)
 
-        st.subheader(f"🔢 Quantidade e Percentual de Respostas para '{categoria_escolhida}'")
+        st.subheader(f"\U0001F522 Quantidade e Percentual de Respostas para '{categoria_escolhida}'")
         st.write(df_counts)
 
-        # Salvar gráfico
-        nome_limpo = limpar_nome_arquivo(categoria_escolhida)
-        caminho_imagem = f"{nome_limpo}.png"
-        pio.write_image(fig_cat, caminho_imagem)
-        graficos_salvos.append(caminho_imagem)
-
         exportar_excel(df_counts)
-        exportar_pdf_com_graficos(graficos_salvos)
+
+        grafico_path = salvar_grafico(df_counts, f"Respostas de {categoria_escolhida}")
+        pdf.chapter_title(f"{categoria_escolhida}")
+        pdf.add_image(grafico_path)
+        os.unlink(grafico_path)
 
     else:
-        st.subheader("📋 Todas as Perguntas e Respostas")
-        total_geral = 0
-        respostas_totais = []
+        st.subheader("\U0001F4D1 Áreas Atendidas - Todas as Perguntas")
 
-        for col in categorical_columns:
-            st.markdown(f"### ❓ {col}")
-            respostas = df[col].value_counts().reset_index()
-            respostas.columns = ['Resposta', 'Quantidade']
-            respostas['Percentual (%)'] = (respostas['Quantidade'] / respostas['Quantidade'].sum() * 100).round(2)
-            total_geral += respostas['Quantidade'].sum()
-            respostas['Pergunta'] = col
-            respostas_totais.append(respostas)
+        respostas_esperadas = ["Excelente", "Bom", "Regular", "Ruim", "Não se Aplica"]
 
-            fig = px.bar(respostas, x="Resposta", y="Quantidade", text="Percentual (%)", title=f"Respostas para: {col}")
+        dados_areas = []
+        for idx, col in enumerate(colunas_exibir):
+            total_respostas = df[col].notna().sum()
+            linha = {"Área": nomes_areas.get(idx, col), "Qt Respostas": total_respostas}
+
+            for resp in respostas_esperadas:
+                qtd = (df[col] == resp).sum()
+                perc = round((qtd / total_respostas) * 100, 2) if total_respostas > 0 else 0
+                linha[resp] = qtd
+                linha[f"% {resp}"] = perc
+
+            dados_areas.append(linha)
+
+            df_counts = df[col].value_counts().reset_index()
+            df_counts.columns = ['Resposta', 'Quantidade']
+            df_counts['Percentual (%)'] = (df_counts['Quantidade'] / df_counts['Quantidade'].sum() * 100).round(2)
+
+            fig = px.bar(df_counts, x="Resposta", y="Quantidade", text="Percentual (%)",
+                         title=f"Respostas de {col}", color="Resposta",
+                         color_discrete_map={r: get_color(r) for r in df_counts['Resposta']})
             fig.update_traces(textposition='outside')
             st.plotly_chart(fig)
 
-            nome_limpo = limpar_nome_arquivo(col)
-            caminho_img = f"{nome_limpo}.png"
-            pio.write_image(fig, caminho_img)
-            graficos_salvos.append(caminho_img)
+            grafico_path = salvar_grafico(df_counts, f"Respostas de {col}")
+            pdf.chapter_title(f"{nomes_areas.get(idx, col)}")
+            pdf.add_image(grafico_path)
+            os.unlink(grafico_path)
 
-            st.write(respostas)
+        df_areas = pd.DataFrame(dados_areas)
+        st.dataframe(df_areas)
 
-        st.markdown(f"## 📊 Total Geral de Respostas: **{total_geral}**")
+        exportar_excel(df_areas, nome_arquivo="areas_atendidas.xlsx")
 
-        if respostas_totais:
-            df_geral = pd.concat(respostas_totais)
-            exportar_excel(df_geral, "todas_respostas.xlsx")
-            exportar_pdf_com_graficos(graficos_salvos)
+        pdf.chapter_title("Resumo de Áreas Atendidas")
+        for index, row in df_areas.iterrows():
+            pdf.chapter_body(f"Área: {row['Área']}, Qt Respostas: {row['Qt Respostas']}, Excelente: {row['Excelente']}, % Excelente: {row['% Excelente']}%")
+
+    buffer = BytesIO()
+    pdf.output(buffer)
+    b64 = base64.b64encode(buffer.getvalue()).decode()
+    href = f'<a href="data:application/octet-stream;base64,{b64}" download="relatorio_satisfacao.pdf">\U0001F4C4 Baixar PDF</a>'
+    st.markdown(href, unsafe_allow_html=True)
 
 except Exception as e:
-    st.error(f"Erro ao carregar o arquivo: {e}")
+    st.error(f"Erro ao processar: {e}")
