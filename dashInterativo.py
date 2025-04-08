@@ -7,8 +7,6 @@ from io import BytesIO
 from datetime import datetime, timedelta
 import re
 from fpdf import FPDF
-import matplotlib.pyplot as plt
-import tempfile
 import os
 
 # Autenticando com Google Sheets
@@ -46,8 +44,12 @@ def get_color(resposta):
 
 class PDF(FPDF):
     def header(self):
+        try:
+            self.image("logo.png", x=100, y=5, w=80)  # Imagem maior
+        except:
+            pass
         self.set_font("Arial", "B", 12)
-        self.cell(0, 10, "Relatório de Satisfação dos Pacientes", ln=True, align="C")
+        self.cell(0, 10, "\nRelatório de Satisfação dos Pacientes\n", ln=True, align="C")
         self.ln(10)
 
     def footer(self):
@@ -65,23 +67,24 @@ class PDF(FPDF):
         self.multi_cell(0, 10, body)
         self.ln()
 
-    def insert_image(self, image_path):
-        self.image(image_path, w=180)
-        self.ln(8)
+    def add_table(self, df):
+        self.set_font("Arial", "", 7)
+        col_widths = [40] + [(self.w - 40) / (len(df.columns) - 1)] * (len(df.columns) - 1)
+        row_height = 6
 
-def salvar_grafico(df_counts, titulo):
-    fig, ax = plt.subplots()
-    colors = [get_color(resp) for resp in df_counts['Resposta']]
-    ax.bar(df_counts['Resposta'], df_counts['Quantidade'], color=colors)
-    ax.set_title(titulo)
-    ax.set_ylabel("Quantidade")
-    ax.set_xlabel("Resposta")
-    for i, (qtd, perc) in enumerate(zip(df_counts['Quantidade'], df_counts['Percentual (%)'])):
-        ax.text(i, qtd, f"{perc}%", ha='center', va='bottom')
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-    plt.savefig(temp_file.name, bbox_inches='tight')
-    plt.close(fig)
-    return temp_file.name
+        # Cabeçalho
+        for i, col in enumerate(df.columns):
+            self.cell(col_widths[i], row_height, str(col), border=1)
+        self.ln(row_height)
+
+        # Conteúdo
+        for _, row in df.iterrows():
+            for i, item in enumerate(row):
+                texto = str(item)
+                if len(texto) > 20 and i == 0:
+                    texto = texto[:17] + '...'
+                self.cell(col_widths[i], row_height, texto, border=1)
+            self.ln(row_height)
 
 nomes_areas = {
     0: "Serviço Social", 1: "Nutrição", 2: "Psicopedagogia", 3: "Psicologia", 4: "Odontologia",
@@ -154,11 +157,6 @@ try:
         st.write(df_counts)
         exportar_excel(df_counts)
 
-        pdf.chapter_title(categoria_escolhida)
-        grafico_path = salvar_grafico(df_counts, f"Respostas de {categoria_escolhida}")
-        pdf.insert_image(grafico_path)
-        os.unlink(grafico_path)
-
     else:
         st.subheader("\U0001F4D1 Áreas Atendidas - Todas as Perguntas")
         respostas_esperadas = ["Excelente", "Bom", "Regular", "Ruim", "Não se Aplica"]
@@ -184,19 +182,13 @@ try:
             fig.update_traces(textposition='outside')
             st.plotly_chart(fig)
 
-            pdf.chapter_title(nomes_areas.get(idx, col))
-            grafico_path = salvar_grafico(df_counts, f"Respostas de {col}")
-            pdf.insert_image(grafico_path)
-            os.unlink(grafico_path)
-
         df_areas = pd.DataFrame(dados_areas)
         st.dataframe(df_areas)
         exportar_excel(df_areas, nome_arquivo="areas_atendidas.xlsx")
 
+        # Adiciona planilha ao PDF
         pdf.chapter_title("Resumo de Áreas Atendidas")
-        for index, row in df_areas.iterrows():
-            resumo = f"Área: {row['Área']}, Qt Respostas: {row['Qt Respostas']}, Excelente: {row['Excelente']}, % Excelente: {row['% Excelente']}%"
-            pdf.chapter_body(resumo)
+        pdf.add_table(df_areas)
 
     if "Deixe sua Sugestão:" in df.columns:
         sugestoes = df["Deixe sua Sugestão:"].dropna().reset_index(drop=True)
