@@ -201,7 +201,7 @@ try:
 
     # Sugestões
     if "Deixe sua Sugestão:" in df.columns:
-        sugestoes = df["Deixe sua sugestão"].dropna().reset_index(drop=True)
+        sugestoes = df["Deixe sua Sugestão:"].dropna().reset_index(drop=True)
         if not sugestoes.empty:
             st.subheader("💬 Sugestões")
             st.dataframe(sugestoes.to_frame(name="Sugestões"))
