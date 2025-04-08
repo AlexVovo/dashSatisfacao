@@ -1,4 +1,6 @@
 import streamlit as st
+import gspread
+from google.oauth2.service_account import Credentials
 import pandas as pd
 import plotly.express as px
 from io import BytesIO
@@ -10,11 +12,19 @@ import matplotlib.pyplot as plt
 import tempfile
 import os
 
-# Função para limpar nome de arquivo
+# Autenticando com Google Sheets
+@st.cache_data
+def get_google_sheet(spreadsheet_url, sheet_name):
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = Credentials.from_service_account_file("credenciais.json", scopes=scope)
+    client = gspread.authorize(creds)
+    sheet = client.open_by_url(spreadsheet_url).worksheet(sheet_name)
+    data = sheet.get_all_records()
+    return pd.DataFrame(data)
+
 def limpar_nome_arquivo(nome):
     return re.sub(r'[^\w\s-]', '_', nome).strip().replace(' ', '_')
 
-# Função para exportar Excel
 def exportar_excel(df, nome_arquivo="resumo_areas.xlsx"):
     buffer = BytesIO()
     df.to_excel(buffer, index=False)
@@ -25,7 +35,6 @@ def exportar_excel(df, nome_arquivo="resumo_areas.xlsx"):
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-# Função para aplicar cores aos gráficos
 def get_color(resposta):
     cores = {
         "Excelente": "green",
@@ -36,7 +45,6 @@ def get_color(resposta):
     }
     return cores.get(resposta, "black")
 
-# Função para gerar PDF
 class PDF(FPDF):
     def header(self):
         self.set_font("Arial", "B", 12)
@@ -62,8 +70,6 @@ class PDF(FPDF):
         self.image(image_path, w=180)
         self.ln(10)
 
-# Função para salvar gráfico temporariamente
-
 def salvar_grafico(df_counts, titulo):
     fig, ax = plt.subplots()
     colors = [get_color(resp) for resp in df_counts['Resposta']]
@@ -78,7 +84,7 @@ def salvar_grafico(df_counts, titulo):
     plt.close(fig)
     return temp_file.name
 
-# Dicionário de nomes de áreas
+# Nome das áreas
 nomes_areas = {
     0: "Serviço Social", 1: "Nutrição", 2: "Psicopedagogia", 3: "Psicologia", 4: "Odontologia",
     5: "Fonoaudiologia", 6: "Fisioterapia", 7: "Psiquiatria", 8: "Farmácia", 9: "Enfermagem",
@@ -91,14 +97,15 @@ nomes_areas = {
 st.set_page_config(page_title="Satisfação Pacientes", layout="wide")
 st.title("\U0001F4CA Feedback dos Pacientes")
 
-file_path = "FormPacientes.xlsx"
+spreadsheet_url = "https://docs.google.com/spreadsheets/d/1UMkWtlZaPrOes68tC2lTHfqyn88kmdeVzm_sqB9c6KI/edit?usp=sharing"
+sheet_name = "Respostas ao formulário 1"
 
 try:
-    df = pd.read_excel(file_path)
-    st.success("Arquivo carregado com sucesso!")
+    df = get_google_sheet(spreadsheet_url, sheet_name)
+    st.success("Dados carregados com sucesso!")
 
-    if "Data de preenchimento" in df.columns:
-        df["Data de preenchimento"] = pd.to_datetime(df["Data de preenchimento"], errors="coerce")
+    if "Carimbo de data/hora" in df.columns:
+        df["Data de preenchimento"] = pd.to_datetime(df["Carimbo de data/hora"], errors="coerce")
         df = df.dropna(subset=["Data de preenchimento"])
         df["Ano"] = df["Data de preenchimento"].dt.year.astype(int)
         df["Mês"] = df["Data de preenchimento"].dt.strftime("%B")
@@ -126,13 +133,10 @@ try:
 
         df = df[(df["Ano"] == ano_selecionado) & (df["Mês"] == mes_selecionado)]
 
-    colunas_validas = df.select_dtypes(include=['object']).columns
-    colunas_exibir = [
-        col for col in colunas_validas
-        if col.strip().lower() not in ["data de preenchimento", "deixe sua sugestão"]
-    ]
+    # Seleciona colunas de índice 2 a 23
+    colunas_graficos = df.columns[2:24].tolist()
 
-    opcoes = ["Todas as Perguntas"] + colunas_exibir
+    opcoes = ["Todas as Perguntas"] + colunas_graficos
     categoria_escolhida = st.selectbox("Selecione uma pergunta", opcoes)
 
     pdf = PDF()
@@ -151,7 +155,6 @@ try:
 
         st.subheader(f"\U0001F522 Quantidade e Percentual de Respostas para '{categoria_escolhida}'")
         st.write(df_counts)
-
         exportar_excel(df_counts)
 
         grafico_path = salvar_grafico(df_counts, f"Respostas de {categoria_escolhida}")
@@ -161,20 +164,17 @@ try:
 
     else:
         st.subheader("\U0001F4D1 Áreas Atendidas - Todas as Perguntas")
-
         respostas_esperadas = ["Excelente", "Bom", "Regular", "Ruim", "Não se Aplica"]
-
         dados_areas = []
-        for idx, col in enumerate(colunas_exibir):
+
+        for idx, col in enumerate(colunas_graficos):
             total_respostas = df[col].notna().sum()
             linha = {"Área": nomes_areas.get(idx, col), "Qt Respostas": total_respostas}
-
             for resp in respostas_esperadas:
                 qtd = (df[col] == resp).sum()
                 perc = round((qtd / total_respostas) * 100, 2) if total_respostas > 0 else 0
                 linha[resp] = qtd
                 linha[f"% {resp}"] = perc
-
             dados_areas.append(linha)
 
             df_counts = df[col].value_counts().reset_index()
@@ -194,12 +194,17 @@ try:
 
         df_areas = pd.DataFrame(dados_areas)
         st.dataframe(df_areas)
-
         exportar_excel(df_areas, nome_arquivo="areas_atendidas.xlsx")
-
         pdf.chapter_title("Resumo de Áreas Atendidas")
         for index, row in df_areas.iterrows():
             pdf.chapter_body(f"Área: {row['Área']}, Qt Respostas: {row['Qt Respostas']}, Excelente: {row['Excelente']}, % Excelente: {row['% Excelente']}%")
+
+    # Sugestões
+    if "Deixe sua Sugestão:" in df.columns:
+        sugestoes = df["Deixe sua sugestão"].dropna().reset_index(drop=True)
+        if not sugestoes.empty:
+            st.subheader("💬 Sugestões")
+            st.dataframe(sugestoes.to_frame(name="Sugestões"))
 
     buffer = BytesIO()
     pdf.output(buffer)
