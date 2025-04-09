@@ -45,12 +45,13 @@ def get_color(resposta):
 class PDF(FPDF):
     def header(self):
         try:
-            self.image("logo.png", x=100, y=5, w=80)  # Imagem maior
+            self.image("logo.png", x=0, y=5, w=200)
         except:
             pass
         self.set_font("Arial", "B", 12)
-        self.cell(0, 10, "\nRelatório de Satisfação dos Pacientes\n", ln=True, align="C")
-        self.ln(10)
+        self.ln(30)
+        self.cell(0, 10, "Relatório de Satisfação dos Pacientes", ln=True, align="C")
+        self.ln(5)
 
     def footer(self):
         self.set_y(-15)
@@ -69,22 +70,34 @@ class PDF(FPDF):
 
     def add_table(self, df):
         self.set_font("Arial", "", 7)
-        col_widths = [40] + [(self.w - 40) / (len(df.columns) - 1)] * (len(df.columns) - 1)
+        area_width = 30
+        outras_width = (self.w - area_width - 20) / (len(df.columns) - 1)
+        col_widths = [area_width if i == 0 else outras_width for i in range(len(df.columns))]
         row_height = 6
 
         # Cabeçalho
         for i, col in enumerate(df.columns):
-            self.cell(col_widths[i], row_height, str(col), border=1)
+            self.cell(col_widths[i], row_height, str(col)[:20], border=1)
         self.ln(row_height)
 
-        # Conteúdo
+        # Linhas da tabela
         for _, row in df.iterrows():
-            for i, item in enumerate(row):
+            y_start = self.get_y()
+            x_start = self.get_x()
+
+            # Primeira célula (Área) com quebra de linha
+            self.set_font("Arial", "B", 7)
+            self.multi_cell(col_widths[0], row_height, str(row[0]), border=1)
+            y_end = self.get_y()
+            linha_altura = y_end - y_start
+
+            # Resto da linha alinhado
+            self.set_xy(x_start + col_widths[0], y_start)
+            self.set_font("Arial", "", 7)
+            for i, item in enumerate(row[1:], start=1):
                 texto = str(item)
-                if len(texto) > 20 and i == 0:
-                    texto = texto[:17] + '...'
-                self.cell(col_widths[i], row_height, texto, border=1)
-            self.ln(row_height)
+                self.cell(col_widths[i], linha_altura, texto[:15], border=1)
+            self.ln(linha_altura)
 
 nomes_areas = {
     0: "Serviço Social", 1: "Nutrição", 2: "Psicopedagogia", 3: "Psicologia", 4: "Odontologia",
@@ -135,7 +148,6 @@ try:
         df = df[(df["Ano"] == ano_selecionado) & (df["Mês"] == mes_selecionado)]
 
     colunas_graficos = df.columns[2:24].tolist()
-
     opcoes = ["Todas as Perguntas"] + colunas_graficos
     categoria_escolhida = st.selectbox("Selecione uma pergunta", opcoes)
 
@@ -183,20 +195,21 @@ try:
             st.plotly_chart(fig)
 
         df_areas = pd.DataFrame(dados_areas)
+        df_areas = df_areas.drop(columns=["Qt Respostas"])
         st.dataframe(df_areas)
         exportar_excel(df_areas, nome_arquivo="areas_atendidas.xlsx")
 
         # Adiciona planilha ao PDF
         pdf.chapter_title("Resumo de Áreas Atendidas")
-        pdf.add_table(df_areas)
+        df_areas_pdf = df_areas.drop(columns=["Não se Aplica", "% Não se Aplica"])
+        pdf.add_table(df_areas_pdf)
 
     if "Deixe sua Sugestão:" in df.columns:
         sugestoes = df["Deixe sua Sugestão:"].dropna().reset_index(drop=True)
         if not sugestoes.empty:
-            st.subheader("💬 Sugestões")
+            st.subheader("\U0001F4AC Sugestões")
             st.dataframe(sugestoes.to_frame(name="Sugestões"))
 
-    # Salvar PDF como bytes e oferecer botão de download
     pdf_bytes = pdf.output(dest='S').encode('latin1')
     buffer = BytesIO(pdf_bytes)
 
