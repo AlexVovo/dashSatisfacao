@@ -75,23 +75,38 @@ class PDF(FPDF):
         col_widths = [area_width if i == 0 else outras_width for i in range(len(df.columns))]
         row_height = 6
 
+        def check_space(altura_necessaria):
+            if self.get_y() + altura_necessaria > self.h - 30:  # margem inferior
+                self.add_page()
+
         # Cabeçalho
+        check_space(row_height)
         for i, col in enumerate(df.columns):
             self.cell(col_widths[i], row_height, str(col)[:20], border=1)
         self.ln(row_height)
 
-        # Linhas da tabela
+        # Conteúdo
         for _, row in df.iterrows():
             y_start = self.get_y()
             x_start = self.get_x()
 
-            # Primeira célula (Área) com quebra de linha
             self.set_font("Arial", "B", 7)
             self.multi_cell(col_widths[0], row_height, str(row[0]), border=1)
             y_end = self.get_y()
             linha_altura = y_end - y_start
 
-            # Resto da linha alinhado
+            if y_end > self.h - 30:
+                self.add_page()
+                for i, col in enumerate(df.columns):
+                    self.cell(col_widths[i], row_height, str(col)[:20], border=1)
+                self.ln(row_height)
+                y_start = self.get_y()
+                x_start = self.get_x()
+                self.set_font("Arial", "B", 7)
+                self.multi_cell(col_widths[0], row_height, str(row[0]), border=1)
+                y_end = self.get_y()
+                linha_altura = y_end - y_start
+
             self.set_xy(x_start + col_widths[0], y_start)
             self.set_font("Arial", "", 7)
             for i, item in enumerate(row[1:], start=1):
@@ -99,15 +114,21 @@ class PDF(FPDF):
                 self.cell(col_widths[i], linha_altura, texto[:15], border=1)
             self.ln(linha_altura)
 
-nomes_areas = {
-    0: "Serviço Social", 1: "Nutrição", 2: "Psicopedagogia", 3: "Psicologia", 4: "Odontologia",
-    5: "Fonoaudiologia", 6: "Fisioterapia", 7: "Psiquiatria", 8: "Farmácia", 9: "Enfermagem",
-    10: "Educativas/Educação em grupo", 11: "Assistência Familiar", 12: "Copa", 13: "Recepção",
-    14: "Ações Culturais e Festividades", 15: "Recreação", 16: "Atividades Interativas",
-    17: "Oficinas Arte/Vida", 18: "Apoio Jurídico", 19: "Limpeza do Local",
-    20: "ICI x Famílias", 21: "Terapia Ocupacioal"
-}
+    def add_assinatura(self):
+        if self.get_y() > self.h - 30:
+            self.add_page()
+        self.ln(10)
+        try:
+            self.image("assin.png", w=40)
+            self.ln(2)
+        except:
+            pass
+        self.set_font("Arial", "B", 10)
+        self.cell(0, 10, "Mônica Gottardi", ln=True)
+        self.set_font("Arial", "", 10)
+        self.cell(0, 10, "Coord. Núcleo de Atenção ao Paciente", ln=True)
 
+# Interface principal
 st.set_page_config(page_title="Satisfação Pacientes", layout="wide")
 st.title("\U0001F4CA Feedback dos Pacientes")
 
@@ -151,7 +172,16 @@ try:
     opcoes = ["Todas as Perguntas"] + colunas_graficos
     categoria_escolhida = st.selectbox("Selecione uma pergunta", opcoes)
 
-    pdf = PDF()
+    nomes_areas = {
+        0: "Serviço Social", 1: "Nutrição", 2: "Psicopedagogia", 3: "Psicologia", 4: "Odontologia",
+        5: "Fonoaudiologia", 6: "Fisioterapia", 7: "Psiquiatria", 8: "Farmácia", 9: "Enfermagem",
+        10: "Educativas/Educação em grupo", 11: "Assistência Familiar", 12: "Copa", 13: "Recepção",
+        14: "Ações Culturais e Festividades", 15: "Recreação", 16: "Atividades Interativas",
+        17: "Oficinas Arte/Vida", 18: "Apoio Jurídico", 19: "Limpeza do Local",
+        20: "ICI x Famílias", 21: "Terapia Ocupacioal"
+    }
+
+    pdf = PDF(orientation='L')
     pdf.add_page()
 
     if categoria_escolhida != "Todas as Perguntas":
@@ -168,7 +198,6 @@ try:
         st.subheader(f"\U0001F522 Quantidade e Percentual de Respostas para '{categoria_escolhida}'")
         st.write(df_counts)
         exportar_excel(df_counts)
-
     else:
         st.subheader("\U0001F4D1 Áreas Atendidas - Todas as Perguntas")
         respostas_esperadas = ["Excelente", "Bom", "Regular", "Ruim", "Não se Aplica"]
@@ -195,30 +224,39 @@ try:
             st.plotly_chart(fig)
 
         df_areas = pd.DataFrame(dados_areas)
-        df_areas = df_areas.drop(columns=["Qt Respostas"])
+        colunas_soma = ["Qt Respostas", "Excelente", "Bom", "Ruim", "Não se Aplica"]
+        somas = df_areas[colunas_soma].sum(numeric_only=True)
+
+        linha_totais = {col: somas[col] for col in colunas_soma}
+        linha_totais["Área"] = "Total"
+        for col in df_areas.columns:
+            if col not in linha_totais:
+                linha_totais[col] = ""
+
+        df_areas = pd.concat([df_areas, pd.DataFrame([linha_totais])], ignore_index=True)
         st.dataframe(df_areas)
-        exportar_excel(df_areas, nome_arquivo="areas_atendidas.xlsx")
 
-        # Adiciona planilha ao PDF
-        pdf.chapter_title("Resumo de Áreas Atendidas")
-        df_areas_pdf = df_areas.drop(columns=["Não se Aplica", "% Não se Aplica"])
-        pdf.add_table(df_areas_pdf)
+        mes_arquivo = (mes_selecionado.lower()
+                       .replace("ç", "c").replace("ã", "a").replace("é", "e")
+                       .replace("ô", "o").replace("í", "i"))
+        nome_excel = f"areas_atendidas_{mes_arquivo}_{ano_selecionado}.xlsx"
+        nome_pdf = f"relatorio_{mes_arquivo}_{ano_selecionado}.pdf"
 
-    if "Deixe sua Sugestão:" in df.columns:
-        sugestoes = df["Deixe sua Sugestão:"].dropna().reset_index(drop=True)
-        if not sugestoes.empty:
-            st.subheader("\U0001F4AC Sugestões")
-            st.dataframe(sugestoes.to_frame(name="Sugestões"))
+        exportar_excel(df_areas, nome_arquivo=nome_excel)
 
-    pdf_bytes = pdf.output(dest='S').encode('latin1')
-    buffer = BytesIO(pdf_bytes)
+        pdf.chapter_title(f"Resumo de Áreas Atendidas - {mes_selecionado}/{ano_selecionado}")
+        pdf.add_table(df_areas)
+        pdf.add_assinatura()
 
-    st.download_button(
-        label="\U0001F4C4 Baixar PDF",
-        data=buffer,
-        file_name="relatorio_satisfacao.pdf",
-        mime="application/pdf"
-    )
+        pdf_bytes = pdf.output(dest='S').encode('latin1')
+        buffer = BytesIO(pdf_bytes)
+
+        st.download_button(
+            label="\U0001F4C4 Baixar PDF",
+            data=buffer,
+            file_name=nome_pdf,
+            mime="application/pdf"
+        )
 
 except Exception as e:
     st.error(f"Erro ao processar: {e}")
