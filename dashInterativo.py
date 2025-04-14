@@ -119,7 +119,7 @@ class PDF(FPDF):
             self.add_page()
         self.ln(10)
         try:
-            self.image("assin.png", w=40)
+       
             self.ln(2)
         except:
             pass
