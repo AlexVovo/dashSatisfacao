@@ -118,11 +118,6 @@ class PDF(FPDF):
         if self.get_y() > self.h - 30:
             self.add_page()
         self.ln(10)
-        try:
-            self.image("assin.png", w=40)
-            self.ln(2)
-        except:
-            pass
         self.set_font("Arial", "B", 10)
         self.cell(0, 10, "Mônica Gottardi", ln=True)
         self.set_font("Arial", "", 10)
