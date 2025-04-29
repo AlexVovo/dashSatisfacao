@@ -237,18 +237,30 @@ try:
             st.plotly_chart(fig)
 
         df_areas = pd.DataFrame(dados_areas)
-        colunas_soma = ["Bom", "Ruim", "Não se Aplica"]
-        somas = df_areas[colunas_soma].sum(numeric_only=True)
+        respostas_esperadas = ["Excelente", "Bom", "Regular", "Ruim", "Não se Aplica"]
 
-        linha_totais = {col: somas[col] for col in colunas_soma}
+        # Soma os totais absolutos por tipo de resposta
+        somas_respostas = df_areas[respostas_esperadas].sum(numeric_only=True)
+
+        # Soma total geral de respostas
+        total_geral_respostas = somas_respostas.sum()
+
+        # Calcula porcentagens em relação ao total geral
+        linha_totais = {
+            f"% {resp}": round((somas_respostas[resp] / total_geral_respostas) * 100, 2)
+            for resp in respostas_esperadas
+        }
+
+        # Preenche os demais campos com vazio
         linha_totais["Área"] = "Total"
         for col in df_areas.columns:
             if col not in linha_totais:
                 linha_totais[col] = ""
 
+        # Adiciona a linha ao DataFrame
         df_areas = pd.concat([df_areas, pd.DataFrame([linha_totais])], ignore_index=True)
+        # Exibe
         st.dataframe(df_areas)
-
         mes_arquivo = (mes_selecionado.lower()
                        .replace("ç", "c").replace("ã", "a").replace("é", "e")
                        .replace("ô", "o").replace("í", "i"))
