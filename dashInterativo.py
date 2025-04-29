@@ -124,8 +124,19 @@ class PDF(FPDF):
         self.cell(0, 10, "Coord. Núcleo de Atenção ao Paciente", ln=True)
 
 # Interface principal
-st.set_page_config(page_title="Satisfação Pacientes", layout="wide")
-st.title("\U0001F4CA Feedback dos Pacientes")
+st.set_page_config(
+    page_title="Feedback dos Pacientes ICI",
+    page_icon="icon.png",
+    layout="wide",
+    initial_sidebar_state="auto",
+)
+col1, col2 = st.columns([1, 20])  # ajuste as proporções conforme desejar
+
+with col1:
+    st.image("icon.png", width=200)
+
+with col2:
+    st.title("Feedback dos Pacientes")
 
 spreadsheet_url = "https://docs.google.com/spreadsheets/d/1UMkWtlZaPrOes68tC2lTHfqyn88kmdeVzm_sqB9c6KI/edit?usp=sharing"
 sheet_name = "Respostas ao formulário 1"
@@ -138,7 +149,7 @@ try:
         df["Data de preenchimento"] = pd.to_datetime(df["Carimbo de data/hora"], errors="coerce")
         df = df.dropna(subset=["Data de preenchimento"])
         df["Ano"] = df["Data de preenchimento"].dt.year.astype(int)
-        df["Mês"] = df["Data de preenchimento"].dt.strftime("%B")
+        df["Mês Inglês"] = df["Data de preenchimento"].dt.strftime("%B")
 
         meses_traducao = {
             "January": "Janeiro", "February": "Fevereiro", "March": "Março",
@@ -146,7 +157,8 @@ try:
             "July": "Julho", "August": "Agosto", "September": "Setembro",
             "October": "Outubro", "November": "Novembro", "December": "Dezembro"
         }
-        df["Mês"] = df["Mês"].map(meses_traducao)
+
+        df["Mês"] = df["Mês Inglês"].map(meses_traducao)
 
         hoje = datetime.today()
         mes_anterior = hoje - timedelta(days=30)
@@ -154,13 +166,19 @@ try:
         ano_default = mes_anterior.year
 
         st.subheader("\U0001F4C5 Filtrar por Mês e Ano")
-        ordem_meses = list(meses_traducao.values())
+
         anos_disponiveis = sorted(df["Ano"].unique())
-        meses_disponiveis = [m for m in ordem_meses if m in df["Mês"].unique()]
+        ano_selecionado = st.selectbox("Ano", anos_disponiveis, index=anos_disponiveis.index(ano_default) if ano_default in anos_disponiveis else 0)
 
-        ano_selecionado = st.selectbox("Ano", anos_disponiveis, index=anos_disponiveis.index(ano_default))
-        mes_selecionado = st.selectbox("Mês", meses_disponiveis, index=meses_disponiveis.index(mes_default) if mes_default in meses_disponiveis else 0)
+        # Filtro de meses baseado no ano selecionado
+        df_ano = df[df["Ano"] == ano_selecionado]
+        ordem_meses = list(meses_traducao.values())
+        meses_disponiveis = [m for m in ordem_meses if m in df_ano["Mês"].unique()]
+        mes_default_index = meses_disponiveis.index(mes_default) if mes_default in meses_disponiveis else 0
 
+        mes_selecionado = st.selectbox("Mês", meses_disponiveis, index=mes_default_index)
+
+        # Filtro final no DataFrame
         df = df[(df["Ano"] == ano_selecionado) & (df["Mês"] == mes_selecionado)]
 
     colunas_graficos = df.columns[2:24].tolist()
@@ -219,7 +237,7 @@ try:
             st.plotly_chart(fig)
 
         df_areas = pd.DataFrame(dados_areas)
-        colunas_soma = ["Qt Respostas", "Excelente", "Bom", "Ruim", "Não se Aplica"]
+        colunas_soma = ["Bom", "Ruim", "Não se Aplica"]
         somas = df_areas[colunas_soma].sum(numeric_only=True)
 
         linha_totais = {col: somas[col] for col in colunas_soma}
