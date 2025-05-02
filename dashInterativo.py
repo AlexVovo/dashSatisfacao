@@ -236,6 +236,25 @@ try:
             fig.update_traces(textposition='outside')
             st.plotly_chart(fig)
 
+
+        if "Deixe sua Sugestão:" in df.columns:
+            st.markdown("---")
+            st.subheader("💬 Comentários e Sugestões")
+
+            # 1) Extrai a coluna como Series, elimina NaN e strings vazias
+            sugestoes = (
+                df["Deixe sua Sugestão:"]
+                .dropna()               # remove NaN
+                .astype(str)            # garante que são strings
+                .str.strip()            # retira espaços em branco extras
+            )
+            sugestoes = sugestoes[sugestoes != ""].reset_index(drop=True)
+
+        if not sugestoes.empty:
+            # 2) Exibe como tabela com nome de coluna "Sugestão"
+            st.dataframe(sugestoes.to_frame(name="Sugestão"))
+        else:
+            st.info("Nenhuma sugestão encontrada para este período.")
         df_areas = pd.DataFrame(dados_areas)
         respostas_esperadas = ["Excelente", "Bom", "Regular", "Ruim", "Não se Aplica"]
 
