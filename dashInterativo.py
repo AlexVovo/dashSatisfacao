@@ -117,7 +117,7 @@ class PDF(FPDF):
     def add_assinatura(self):
         if self.get_y() > self.h - 30:
             self.add_page()
-        self.ln(10)
+        self.ln(30)
         self.set_font("Arial", "B", 10)
         self.cell(0, 10, "Mônica Gottardi", ln=True)
         self.set_font("Arial", "", 10)
@@ -191,7 +191,7 @@ try:
         10: "Educativas/Educação em grupo", 11: "Assistência Familiar", 12: "Copa", 13: "Recepção",
         14: "Ações Culturais e Festividades", 15: "Recreação", 16: "Atividades Interativas",
         17: "Oficinas Arte/Vida", 18: "Apoio Jurídico", 19: "Limpeza do Local",
-        20: "ICI x Famílias", 21: "Terapia Ocupacioal"
+        20: "Comunicação com as famílias", 21: "Terapia Ocupacioal"
     }
 
     pdf = PDF(orientation='L')
@@ -256,6 +256,8 @@ try:
         else:
             st.info("Nenhuma sugestão encontrada para este período.")
         df_areas = pd.DataFrame(dados_areas)
+        df_areas = df_areas[~df_areas["Área"].str.contains("Oficinas Arte/Vida", case=False, na=False)]
+
         respostas_esperadas = ["Excelente", "Bom", "Regular", "Ruim", "Não se Aplica"]
 
         # Soma os totais absolutos por tipo de resposta
