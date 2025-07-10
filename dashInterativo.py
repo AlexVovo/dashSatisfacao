@@ -219,8 +219,13 @@ try:
         for idx, col in enumerate(colunas_graficos):
             total_respostas = df[col].notna().sum()
             linha = {"Área": nomes_areas.get(idx, col), "Qt Respostas": total_respostas}
+
             for resp in respostas_esperadas:
-                qtd = (df[col] == resp).sum()
+                col_normalizada = df[col].astype(str).str.strip().str.lower()
+                resp_normalizado = resp.strip().lower()
+                qtd = (col_normalizada == resp_normalizado).sum()
+
+                #qtd = (df[col] == resp).sum()
                 perc = round((qtd / total_respostas) * 100, 2) if total_respostas > 0 else 0
                 linha[resp] = qtd
                 linha[f"% {resp}"] = perc
@@ -236,7 +241,7 @@ try:
             fig.update_traces(textposition='outside')
             st.plotly_chart(fig)
 
-
+        
         if "Deixe sua Sugestão:" in df.columns:
             st.markdown("---")
             st.subheader("💬 Comentários e Sugestões")
@@ -280,6 +285,12 @@ try:
 
         # Adiciona a linha ao DataFrame
         df_areas = pd.concat([df_areas, pd.DataFrame([linha_totais])], ignore_index=True)
+
+        # Adiciona o símbolo de % nas colunas de percentual
+        for coluna in df_areas.columns:
+            if coluna.startswith('% '):
+                df_areas[coluna] = df_areas[coluna].apply(lambda x: f"{x}%" if isinstance(x, (int, float)) else x)
+        #df_areas = pd.concat([df_areas, pd.DataFrame([linha_totais])], ignore_index=True)
         # Exibe
         st.dataframe(df_areas)
         mes_arquivo = (mes_selecionado.lower()
