@@ -10,6 +10,7 @@ import re
 from fpdf import FPDF
 import os
 import unicodedata
+from PIL import Image
 
 
     # Configuração da página
@@ -17,8 +18,11 @@ st.set_page_config(
         page_title="Dashboard - Feedback dos Pacientes",
         page_icon="📊",
         layout="wide",
+        
         initial_sidebar_state="expanded",
     )
+# Adicionar imagem no corpo da página
+st.image("logo.png", caption="Instituto do Câncer Infantil")
 
     # CSS customizado para melhorar o visual
 st.markdown("""
