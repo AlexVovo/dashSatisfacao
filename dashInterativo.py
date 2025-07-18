@@ -181,17 +181,20 @@ try:
         # Filtro final no DataFrame
         df = df[(df["Ano"] == ano_selecionado) & (df["Mês"] == mes_selecionado)]
 
+    # MODIFICAÇÃO 1: Filtra as colunas para excluir "Oficinas Arte/Vida"
     colunas_graficos = df.columns[2:24].tolist()
-    opcoes = ["Todas as Perguntas"] + colunas_graficos
+    colunas_filtradas = [col for col in colunas_graficos if "oficinas arte/vida" not in col.lower()]
+    
+    opcoes = ["Todas as Perguntas"] + colunas_filtradas
     categoria_escolhida = st.selectbox("Selecione uma pergunta", opcoes)
 
+    # MODIFICAÇÃO 2: Atualiza o dicionário de nomes das áreas removendo o índice 17
     nomes_areas = {
         0: "Serviço Social", 1: "Nutrição", 2: "Psicopedagogia", 3: "Psicologia", 4: "Odontologia",
         5: "Fonoaudiologia", 6: "Fisioterapia", 7: "Psiquiatria", 8: "Farmácia", 9: "Enfermagem",
         10: "Educativas/Educação em grupo", 11: "Assistência Familiar", 12: "Copa", 13: "Recepção",
         14: "Ações Culturais e Festividades", 15: "Recreação", 16: "Atividades Interativas",
-        17: "Oficinas Arte/Vida", 18: "Apoio Jurídico", 19: "Limpeza do Local",
-        20: "Comunicação com as famílias", 21: "Terapia Ocupacioal"
+        18: "Apoio Jurídico", 19: "Limpeza do Local", 20: "Comunicação com as famílias", 21: "Terapia Ocupacional"
     }
 
     pdf = PDF(orientation='L')
@@ -216,16 +219,18 @@ try:
         respostas_esperadas = ["Excelente", "Bom", "Regular", "Ruim", "Não se Aplica"]
         dados_areas = []
 
-        for idx, col in enumerate(colunas_graficos):
+        # MODIFICAÇÃO 3: Usa as colunas filtradas em vez das originais
+        for idx, col in enumerate(colunas_filtradas):
             total_respostas = df[col].notna().sum()
-            linha = {"Área": nomes_areas.get(idx, col), "Qt Respostas": total_respostas}
+            # Mapeia o índice corretamente
+            idx_original = colunas_graficos.index(col)
+            linha = {"Área": nomes_areas.get(idx_original, col), "Qt Respostas": total_respostas}
 
             for resp in respostas_esperadas:
                 col_normalizada = df[col].astype(str).str.strip().str.lower()
                 resp_normalizado = resp.strip().lower()
                 qtd = (col_normalizada == resp_normalizado).sum()
 
-                #qtd = (df[col] == resp).sum()
                 perc = round((qtd / total_respostas) * 100, 2) if total_respostas > 0 else 0
                 linha[resp] = qtd
                 linha[f"% {resp}"] = perc
@@ -260,8 +265,9 @@ try:
             st.dataframe(sugestoes.to_frame(name="Sugestão"))
         else:
             st.info("Nenhuma sugestão encontrada para este período.")
+        
         df_areas = pd.DataFrame(dados_areas)
-        df_areas = df_areas[~df_areas["Área"].str.contains("Oficinas Arte/Vida", case=False, na=False)]
+        # REMOÇÃO 4: Remove a linha que filtrava "Oficinas Arte/Vida" (já está filtrado acima)
 
         respostas_esperadas = ["Excelente", "Bom", "Regular", "Ruim", "Não se Aplica"]
 
@@ -290,7 +296,7 @@ try:
         for coluna in df_areas.columns:
             if coluna.startswith('% '):
                 df_areas[coluna] = df_areas[coluna].apply(lambda x: f"{x}%" if isinstance(x, (int, float)) else x)
-        #df_areas = pd.concat([df_areas, pd.DataFrame([linha_totais])], ignore_index=True)
+
         # Exibe
         st.dataframe(df_areas)
         mes_arquivo = (mes_selecionado.lower()
