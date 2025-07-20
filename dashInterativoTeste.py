@@ -403,7 +403,7 @@ try:
         5: "Fonoaudiologia", 6: "Fisioterapia", 7: "Psiquiatria", 8: "Farmácia", 9: "Enfermagem",
         10: "Educativas/Educação em grupo", 11: "Assistência Familiar", 12: "Copa", 13: "Recepção",
         14: "Ações Culturais e Festividades", 15: "Recreação", 16: "Atividades Interativas",
-        18: "Núcleo de Apoio Jurídico", 19: "Limpeza do Local", 20: "Comunicação com as famílias", 21: "Terapia Ocupacional"
+        18: "Apoio Jurídico", 19: "Limpeza do Local", 20: "Comunicação com as famílias", 21: "Terapia Ocupacional"
     }
 
     # Análise baseada na seleção
@@ -553,8 +553,11 @@ try:
                 pdf.add_table(df_areas)
                 pdf.add_assinatura()
 
-                pdf_bytes = pdf.output(dest='S')
+                pdf_bytes = pdf.output(dest='S').encode("latin-1")
                 buffer = BytesIO(pdf_bytes)
+
+                # pdf_bytes = pdf.output(dest='S')
+                #buffer = BytesIO(pdf_bytes)
 
                 st.download_button(
                     label="📄 Baixar Relatório PDF",
