@@ -237,7 +237,7 @@ class PDF(FPDF):
 st.markdown("""
     <div class="main-header">
         <h1>📊 Dashboard - Feedback dos Pacientes</h1>
-        <p>Sistema de Análise de Satisfação | Instituto de Cardiologia</p>
+        <p>Sistema de Análise de Satisfação</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -284,8 +284,8 @@ try:
         areas_analisadas = max(0, total_colunas - colunas_controle)
         st.metric("🏥 Áreas Analisadas", areas_analisadas)
     
-    with col4:
-        st.metric("🎯 Status", "Online", delta="Ativo")
+    #with col4:
+     #   st.metric("🎯 Status", "Online", delta="Ativo")
 
     # Processamento de datas
     if "Carimbo de data/hora" in df.columns:
@@ -355,8 +355,11 @@ try:
             
             # Usar o dataframe filtrado
             df = df_filtrado
+            
+            
     else:
         st.warning("⚠️ Coluna 'Carimbo de data/hora' não encontrada. Usando todos os dados disponíveis.")
+        
 
     # Identificação das colunas de perguntas (mais robusta)
     colunas_excluir = [
@@ -392,19 +395,23 @@ try:
         )
         
         # Debug info (opcional - pode ser removido)
-        with st.expander("🔧 Debug Info"):
-            st.write(f"Total de colunas: {len(df.columns)}")
-            st.write(f"Perguntas disponíveis: {len(colunas_perguntas_filtradas)}")
-            st.write(f"Seleção atual: {pergunta_selecionada}")
+        #with st.expander("🔧 Debug Info"):
+         #   st.write(f"Total de colunas: {len(df.columns)}")
+          #  st.write(f"Perguntas disponíveis: {len(colunas_perguntas_filtradas)}")
+           # st.write(f"Seleção atual: {pergunta_selecionada}")
 
     # Mapeamento de nomes das áreas
     nomes_areas = {
-        0: "Serviço Social", 1: "Nutrição", 2: "Psicopedagogia", 3: "Psicologia", 4: "Odontologia",
-        5: "Fonoaudiologia", 6: "Fisioterapia", 7: "Psiquiatria", 8: "Farmácia", 9: "Enfermagem",
-        10: "Educativas/Educação em grupo", 11: "Assistência Familiar", 12: "Copa", 13: "Recepção",
-        14: "Ações Culturais e Festividades", 15: "Recreação", 16: "Atividades Interativas",
-        18: "Apoio Jurídico", 19: "Limpeza do Local", 20: "Comunicação com as famílias", 21: "Terapia Ocupacional"
-    }
+    0: "Serviço Social", 1: "Nutrição", 2: "Psicopedagogia", 3: "Psicologia", 4: "Odontologia",
+    5: "Fonoaudiologia", 6: "Fisioterapia", 7: "Psiquiatria", 8: "Farmácia", 9: "Enfermagem",
+    10: "Educativas/Educação em grupo", 11: "Assistência Familiar", 12: "Copa", 13: "Recepção",
+    14: "Ações Culturais e Festividades", 15: "Recreação", 16: "Atividades Interativas",
+    # Substituições aplicadas:
+    18: "Limpeza Local",  # era "Apoio Jurídico"
+    19: "Comunicação com as famílias",  # era "Limpeza do Local"
+    20: "Terapia Ocupacional",  # era "Comunicação com as famílias"
+    21: "Terapia Ocupacional"
+}
 
     # Análise baseada na seleção
     if pergunta_selecionada == "📊 Todas as Perguntas":
@@ -418,7 +425,7 @@ try:
         # Progress bar para mostrar progresso
         progress_bar = st.progress(0)
         status_text = st.empty()
-
+    
         for idx, col in enumerate(colunas_perguntas_filtradas):
             progress_bar.progress((idx + 1) / len(colunas_perguntas_filtradas))
             status_text.text(f"Processando: {col}")
@@ -481,7 +488,7 @@ try:
 
         # Resumo final
         st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-        st.markdown("## 📊 Resumo Executivo")
+        st.markdown("## 📊 Resumo")
         
         if dados_areas:
             df_areas = pd.DataFrame(dados_areas)
@@ -553,22 +560,28 @@ try:
                 pdf.add_table(df_areas)
                 pdf.add_assinatura()
 
-                pdf_bytes = pdf.output(dest='S').encode("latin-1")
-                buffer = BytesIO(pdf_bytes)
+                    
+        try:
+            
+            output = pdf.output(dest='S')
+            output = pdf.output(dest='S')
+            pdf_bytes = bytes(output) if isinstance(output, bytearray) else output.encode("latin-1")
+            buffer = BytesIO(pdf_bytes)
 
-                # pdf_bytes = pdf.output(dest='S')
-                #buffer = BytesIO(pdf_bytes)
+            st.download_button(
+                label="📄 Baixar Relatório PDF",
+                data=buffer,
+                file_name=nome_pdf,
+                mime="application/pdf",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.error(f"❌ Erro ao gerar o PDF: {e}")
 
-                st.download_button(
-                    label="📄 Baixar Relatório PDF",
-                    data=buffer,
-                    file_name=nome_pdf,
-                    mime="application/pdf",
-                    use_container_width=True
-                )
-                st.markdown('</div>', unsafe_allow_html=True)
-        else:
-            st.warning("⚠️ Nenhum dado disponível para análise.")
+
+            st.markdown('</div>', unsafe_allow_html=True)
+        #else:
+         #   st.warning("⚠️ Nenhum dado disponível para análise.")
 
     else:
         # Análise individual da pergunta selecionada
@@ -593,7 +606,14 @@ try:
             fig = create_enhanced_chart(df_counts, f"Distribuição de Respostas - {pergunta_selecionada}")
             st.plotly_chart(fig, use_container_width=True)
 
-            # Tabela de resultados
+           # Tabela de resultados baseada nos dados filtrados
+        df_pergunta = df[["Data de preenchimento", pergunta_selecionada]].dropna()
+        df_counts = df_pergunta[pergunta_selecionada].value_counts().reset_index()
+        df_counts.columns = ['Resposta', 'Quantidade']
+
+        if not df_counts.empty:
+            df_counts['Percentual (%)'] = (df_counts['Quantidade'] / df_counts['Quantidade'].sum() * 100).round(2)
+
             col1, col2 = st.columns([2, 1])
             
             with col1:
@@ -605,9 +625,10 @@ try:
                 total_respostas = df_counts['Quantidade'].sum()
                 positivas = df_counts[df_counts['Resposta'].isin(['Excelente', 'Bom'])]['Quantidade'].sum()
                 percentual_positivo = (positivas / total_respostas * 100) if total_respostas > 0 else 0
-                
+
                 st.metric("Total de Respostas", total_respostas)
                 st.metric("Avaliações Positivas", f"{positivas} ({percentual_positivo:.1f}%)")
+
                 
                 # Download
                 st.markdown('<div class="download-section">', unsafe_allow_html=True)
