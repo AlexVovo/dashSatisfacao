@@ -273,9 +273,18 @@ try:
     
     with col2:
         if "Carimbo de data/hora" in df.columns:
-            st.metric("📅 Período Disponível", f"{df['Carimbo de data/hora'].min()[:10]} - {df['Carimbo de data/hora'].max()[:10]}")
+            df["Carimbo de data/hora"] = pd.to_datetime(df["Carimbo de data/hora"], errors="coerce")
+            data_min = df["Carimbo de data/hora"].min().strftime('%d/%m/%Y')
+            data_max = df["Carimbo de data/hora"].max().strftime('%d/%m/%Y')
+            st.metric("📅 Período Disponível", f"{data_min} - {data_max}")
         else:
             st.metric("📅 Período Disponível", "N/A")
+    
+    #with col2:
+     #   if "Carimbo de data/hora" in df.columns:
+      #      st.metric("📅 Período Disponível", f"{df['Carimbo de data/hora'].min()[:10]} - {df['Carimbo de data/hora'].max()[:10]}")
+       # else:
+        #    st.metric("📅 Período Disponível", "N/A")
     
     with col3:
         # Contagem mais robusta das áreas
